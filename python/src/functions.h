@@ -105,7 +105,9 @@ ir::value *cast(ir::value *input, type_code _dtype, ir::builder *builder) {
       other = builder->create_splat(other, src_ty->get_block_shapes());
     return builder->create_icmpNE(input, other);
   }
-  throw_not_implemented("cast");
+  std::ostringstream ss;
+  ss << "cast2 from " << src_sca_ty->repr() << " to " << dst_sca_ty->repr();
+  throw_not_implemented(ss.str());
 }
 
 /*----------------------------------------------

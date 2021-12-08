@@ -569,6 +569,10 @@ class Kernel:
             torch.int16: 'i16',
             torch.int32: 'i32',
             torch.int64: 'i64',
+            triton.language.uint8: 'u8',
+            triton.language.uint16: 'u16',
+            triton.language.uint32: 'u32',
+            triton.language.uint64: 'u64',
         }
         if hasattr(obj, 'data_ptr'):
             return type_names[obj.dtype]
@@ -605,6 +609,10 @@ class Kernel:
             'i16': _triton.ir.type.get_int16,
             'i32': _triton.ir.type.get_int32,
             'i64': _triton.ir.type.get_int64,
+            'u8': _triton.ir.type.get_uint8,
+            'u16': _triton.ir.type.get_uint16,
+            'u32': _triton.ir.type.get_uint32,
+            'u64': _triton.ir.type.get_uint64,
         }
         # convert torch.Tensor to Triton IR pointers
         if hasattr(obj, 'data_ptr'):

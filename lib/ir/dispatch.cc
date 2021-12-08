@@ -1,5 +1,6 @@
 #include "triton/ir/dispatch.h"
 #include <iostream>
+#include <sstream>
 
 namespace triton{
 namespace ir{
@@ -30,7 +31,19 @@ ir::value *dispatch::num_programs(int axis, ir::builder *builder) {
 ir::type *integer_promote(ir::type* a_ty, ir::type* b_ty){
   int a_rank = a_ty->get_integer_bitwidth();
   int b_rank = b_ty->get_integer_bitwidth();
-  return a_rank > b_rank ? a_ty : b_ty;
+  auto a_sn = a_ty->get_integer_signedness();
+  auto b_sn = b_ty->get_integer_signedness();
+  // Rules for signedness taken from "Usual arithmetic conversions" on
+  // https://en.cppreference.com/w/c/language/conversion.
+  if (a_sn == b_sn) {
+    return a_rank > b_rank ? a_ty : b_ty;
+  } else if (a_sn == signedness::UNSIGNED) {
+    return a_rank >= b_rank ? a_ty : b_ty;
+  } else if (b_sn == signedness::UNSIGNED) {
+    return b_rank >= a_rank ? b_ty : a_ty;
+  } else {
+    throw_unreachable("integer_promote");
+  }
 }
 
 enum class DivOrMod { NO, YES };
@@ -182,7 +195,11 @@ ir::value *dispatch::floordiv(ir::value *input, ir::value *other, ir::builder *b
     ir::type *ret_ty = integer_promote(input_scalar_ty, other_scalar_ty);
     input = dispatch::cast(input, ret_ty, builder);
     other = dispatch::cast(other, ret_ty, builder);
-    return builder->create_sdiv(input, other);
+    if (ret_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_udiv(input, other);
+    } else {
+      return builder->create_sdiv(input, other);
+    }
   }
   return throw_unreachable("floordiv");
 }
@@ -276,8 +293,13 @@ ir::value *dispatch::greater_than(ir::value *input, ir::value *other, ir::builde
   if (scalar_ty->is_floating_point_ty())
     return builder->create_fcmpOGT(input, other);
   // int > int
-  else if (scalar_ty->is_integer_ty())
-    return builder->create_icmpSGT(input, other);
+  else if (scalar_ty->is_integer_ty()) {
+    if (scalar_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_icmpUGT(input, other);
+    } else {
+      return builder->create_icmpSGT(input, other);
+    }
+  }
   return throw_unreachable("greater_than");
 }
 
@@ -288,8 +310,13 @@ ir::value *dispatch::greater_equal(ir::value *input, ir::value *other, ir::build
   if (scalar_ty->is_floating_point_ty())
     return builder->create_fcmpOGE(input, other);
   // int >= int
-  else if (scalar_ty->is_integer_ty())
-    return builder->create_icmpSGE(input, other);
+  else if (scalar_ty->is_integer_ty()) {
+    if (scalar_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_icmpUGE(input, other);
+    } else {
+      return builder->create_icmpSGE(input, other);
+    }
+  }
   return throw_unreachable("greater_equal");
 }
 
@@ -300,8 +327,13 @@ ir::value *dispatch::less_than(ir::value *input, ir::value *other, ir::builder *
   if (scalar_ty->is_floating_point_ty())
     return builder->create_fcmpOLT(input, other);
   // int < int
-  else if (scalar_ty->is_integer_ty())
-    return builder->create_icmpSLT(input, other);
+  else if (scalar_ty->is_integer_ty()) {
+    if (scalar_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_icmpULT(input, other);
+    } else {
+      return builder->create_icmpSLT(input, other);
+    }
+  }
   return throw_unreachable("less_than");
 }
 
@@ -312,8 +344,13 @@ ir::value *dispatch::less_equal(ir::value *input, ir::value *other, ir::builder 
   if (scalar_ty->is_floating_point_ty())
     return builder->create_fcmpOLE(input, other);
   // int < int
-  else if (scalar_ty->is_integer_ty())
-    return builder->create_icmpSLE(input, other);
+  else if (scalar_ty->is_integer_ty()) {
+    if (scalar_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_icmpULE(input, other);
+    } else {
+      return builder->create_icmpSLE(input, other);
+    }
+  }
   return throw_unreachable("less_equal");
 }
 
@@ -461,8 +498,10 @@ ir::value *dispatch::cast(ir::value *input, ir::type *dst_ty, ir::builder *build
     return builder->create_fp_ext(input, dst_ty);
   // Int cast
   if (src_sca_ty->is_integer_ty() && dst_sca_ty->is_integer_ty() &&
-      src_sca_ty->get_integer_bitwidth() != dst_sca_ty->get_integer_bitwidth())
-    return builder->create_int_cast(input, dst_ty, src_sca_ty != builder->get_int1_ty());
+      (src_sca_ty->get_integer_bitwidth() != dst_sca_ty->get_integer_bitwidth() || src_sca_ty->get_integer_signedness() != dst_sca_ty->get_integer_signedness())) {
+    bool sign_extend = src_sca_ty->get_integer_signedness() == signedness::SIGNED && src_sca_ty != builder->get_int1_ty();
+    return builder->create_int_cast(input, dst_ty, sign_extend);
+  }
   // Float -> Int
   if (src_sca_ty->is_floating_point_ty() && dst_sca_ty->is_integer_ty()){
     if(dst_sca_ty->is_bool_ty())
@@ -493,7 +532,9 @@ ir::value *dispatch::cast(ir::value *input, ir::type *dst_ty, ir::builder *build
       other = builder->create_splat(other, src_ty->get_block_shapes());
     return builder->create_icmpNE(input, other);
   }
-  return throw_unreachable("cast");
+  std::ostringstream ss;
+  ss << "cast1 from " << src_sca_ty->repr() << " to " << dst_sca_ty->repr();
+  return throw_unreachable(ss.str());
 }
 
 //===----------------------------------------------------------------------===//
@@ -593,8 +634,13 @@ ir::value *dispatch::atomic_max(ir::value* ptr, ir::value *val, ir::value *mask,
   atom_red_typechecking(ptr, val, mask, builder);
   ir::type* sca_ty = val->get_type()->get_scalar_ty();
   // direct call to atomic_max for integers
-  if(sca_ty->is_integer_ty())
-    return builder->create_atomic_rmw(ir::atomic_rmw_op_t::Max, ptr, val, mask);
+  if(sca_ty->is_integer_ty()) {
+    if (sca_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_atomic_rmw(ir::atomic_rmw_op_t::UMax, ptr, val, mask);
+    } else {
+      return builder->create_atomic_rmw(ir::atomic_rmw_op_t::Max, ptr, val, mask);
+    }
+  }
   // for float
   // return atomic_smax(i_ptr, i_val) if val >= 0
   // return atomic_umin(i_ptr, i_val) if val < 0
@@ -610,9 +656,14 @@ ir::value *dispatch::atomic_max(ir::value* ptr, ir::value *val, ir::value *mask,
 ir::value *dispatch::atomic_min(ir::value* ptr, ir::value *val, ir::value *mask, ir::builder *builder){
   atom_red_typechecking(ptr, val, mask, builder);
   ir::type* sca_ty = val->get_type()->get_scalar_ty();
-  // direct call to atomic_max for integers
-  if(sca_ty->is_integer_ty())
-    return builder->create_atomic_rmw(ir::atomic_rmw_op_t::Min, ptr, val, mask);
+  // direct call to atomic_min for integers
+  if(sca_ty->is_integer_ty()) {
+    if (sca_ty->get_integer_signedness() == signedness::UNSIGNED) {
+      return builder->create_atomic_rmw(ir::atomic_rmw_op_t::UMin, ptr, val, mask);
+    } else {
+      return builder->create_atomic_rmw(ir::atomic_rmw_op_t::Min, ptr, val, mask);
+    }
+  }
   // for float
   // return atomic_smin(i_ptr, i_val) if val >= 0
   // return atomic_umax(i_ptr, i_val) if val < 0
