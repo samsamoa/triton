@@ -1,8 +1,10 @@
-import torch
 import os
-from .code_gen import OutOfResources
 import subprocess
 import sys
+
+import torch
+
+from .code_gen import OutOfResources
 
 
 try:
@@ -87,19 +89,6 @@ def allclose(x, y, tol=1e-2):
 def assert_allclose(x, y, tol=1e-2):
     assert x.dtype == y.dtype
     assert allclose(x, y, tol)
-
-
-def random(shape, dtype, device):
-    torch.manual_seed(0)
-    if isinstance(shape, int):
-        shape = (shape, )
-    if dtype == torch.bool:
-        return torch.randint(0, 2, shape, dtype=dtype, device=device)
-    if dtype in [torch.int8, torch.int16, torch.int32, torch.int64]:
-        return torch.randint(1, 32, shape, dtype=dtype, device=device)
-    if dtype in [torch.float16, torch.float32, torch.float64]:
-        return torch.normal(0, 1, shape, dtype=dtype, device=device)
-    raise RuntimeError(f'Unknown dtype {dtype}')
 
 
 def nvsmi(attrs):

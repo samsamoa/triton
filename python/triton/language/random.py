@@ -1,12 +1,6 @@
 import triton
 from . import core as tl
 
-
-# Notes
-# 1. triton doesn't support uint32, so we use int32 instead and benefit from the fact that two's complement operations are equivalent to uint operations.
-# 2. multiply_low_high is currently inefficient.
-# 3. Even though technically philox sampling outputs int, in many places we pretends they were actualy uints e.g. uint_to_uniform_float
-
 PHILOX_KEY_A: tl.constexpr = -1640531527 # 0x9E3779B9
 PHILOX_KEY_B: tl.constexpr = -1150833019 # 0xBB67AE85
 PHILOX_ROUND_A: tl.constexpr = -766435501 # 0xD2511F53
@@ -16,10 +10,6 @@ N_ROUNDS_DEFAULT = 10 # Default number of rounds for philox
 # -------------------
 # randint
 # -------------------
-
-@triton.jit
-def hacky_to_uint64(x):
-    return ((x >> 1).to(tl.int64) << 1) + (x & 1).to(tl.int64)
 
 @triton.jit
 def philox_f(c0, c1, c2, c3, k0, k1, n_rounds: tl.constexpr = N_ROUNDS_DEFAULT):
@@ -67,12 +57,11 @@ def randint4x(seed, offset, n_rounds: tl.constexpr = N_ROUNDS_DEFAULT):
     :param seed: The seed for generating random numbers.
     :param offsets: The offsets to generate random numbers for.
     """
-    z = offset*0 #FIXME: just 0 doesn't work. Likelye some error with broadcasting
-    seed = seed + 0
-    seed = hacky_to_uint64(seed) # uint will solve this
-    seed_hi = ((seed >> 32) & 0xffffffff).to(tl.int32)
-    seed_lo = (seed & 0xffffffff).to(tl.int32)
-    return philox_f(offset, z, z, z, seed_lo, seed_hi, n_rounds)
+    z = (offset * 0).to(tl.uint32) #FIXME: just 0 doesn't work. Likely some error with broadcasting.
+    seed_u64 = seed.to(tl.uint64)
+    seed_hi = ((seed_u64 >> 32) & 0xffffffff).to(tl.uint32)
+    seed_lo = (seed_u64 & 0xffffffff).to(tl.uint32)
+    return philox_f(offset.to(tl.uint32), z, z, z, seed_lo, seed_hi, n_rounds)
 
 
 # -------------------

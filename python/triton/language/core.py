@@ -97,6 +97,10 @@ int8 = dtype(ir.type.get_int8)
 int16 = dtype(ir.type.get_int16)
 int32 = dtype(ir.type.get_int32)
 int64 = dtype(ir.type.get_int64)
+uint8 = dtype(ir.type.get_uint8)
+uint16 = dtype(ir.type.get_uint16)
+uint32 = dtype(ir.type.get_uint32)
+uint64 = dtype(ir.type.get_uint64)
 float8 = dtype(ir.type.get_fp8)
 float16 = dtype(ir.type.get_fp16)
 bfloat16 = dtype(ir.type.get_bf16)
@@ -115,6 +119,10 @@ class block:
         if ir_type.is_int16(): return int16
         if ir_type.is_int32(): return int32
         if ir_type.is_int64(): return int64
+        if ir_type.is_uint8(): return uint8
+        if ir_type.is_uint16(): return uint16
+        if ir_type.is_uint32(): return uint32
+        if ir_type.is_uint64(): return uint64
         if ir_type.is_fp8(): return float8
         if ir_type.is_fp16(): return float16
         if ir_type.is_bf16(): return bfloat16

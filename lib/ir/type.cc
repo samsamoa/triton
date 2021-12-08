@@ -36,6 +36,9 @@ unsigned type::get_primitive_size_in_bits() const {
 unsigned type::get_integer_bitwidth() const
 { assert(id_ == IntegerTyID); return ((integer_type*)(this))->get_bitwidth(); }
 
+signedness type::get_integer_signedness() const
+{ assert(id_ == IntegerTyID); return ((integer_type*)(this))->get_signedness(); }
+
 unsigned type::get_tile_bitwidth() const
 { return ((block_type*)(this))->get_bitwidth(); }
 
@@ -135,6 +138,10 @@ integer_type *type::get_int16_ty(context &ctx) { return &ctx.p_impl->int16_ty; }
 integer_type *type::get_int32_ty(context &ctx) { return &ctx.p_impl->int32_ty; }
 integer_type *type::get_int64_ty(context &ctx) { return &ctx.p_impl->int64_ty; }
 integer_type *type::get_int128_ty(context &ctx) { return &ctx.p_impl->int128_ty; }
+integer_type *type::get_uint8_ty(context &ctx) { return &ctx.p_impl->uint8_ty; }
+integer_type *type::get_uint16_ty(context &ctx) { return &ctx.p_impl->uint16_ty; }
+integer_type *type::get_uint32_ty(context &ctx) { return &ctx.p_impl->uint32_ty; }
+integer_type *type::get_uint64_ty(context &ctx) { return &ctx.p_impl->uint64_ty; }
 
 
 
