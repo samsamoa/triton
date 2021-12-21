@@ -1161,4 +1161,12 @@ class TensorWrapper:
 
 
 def reinterpret(tensor, dtype):
-    return TensorWrapper(tensor, dtype)
+    if isinstance(tensor, TensorWrapper):
+        if dtype == tensor.base.dtype:
+            return tensor.base
+        else:
+            return TensorWrapper(tensor.base, dtype)
+    elif isinstance(tensor, torch.Tensor):
+        return TensorWrapper(tensor, dtype)
+    else:
+        raise TypeError(f'Cannot reinterpret a {type(tensor)}.')

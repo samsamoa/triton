@@ -9,7 +9,7 @@ from numpy.random import RandomState
 
 import triton
 import triton.language as tl
-from triton.code_gen import TensorWrapper
+from triton.code_gen import TensorWrapper, reinterpret
 
 int_dtypes = ['int8', 'int16', 'int32', 'int64']
 uint_dtypes = ['uint8', 'uint16', 'uint32', 'uint64']
@@ -41,7 +41,7 @@ def numpy_to_triton(x: np.ndarray, device='cuda') -> Union[TensorWrapper, torch.
     if t in uint_dtypes:
         signed_type_name = t.lstrip('u')  # e.g. "uint16" -> "int16"
         x_signed = x.astype(getattr(np, signed_type_name))
-        return TensorWrapper(torch.tensor(x_signed, device=device), getattr(tl, t))
+        return reinterpret(torch.tensor(x_signed, device=device), getattr(tl, t))
     else:
         return torch.tensor(x, device=device)
 
@@ -64,16 +64,6 @@ def triton_to_numpy(x):
         return np.array(x.cpu(), dtype=dtype)
     else:
         raise ValueError(f"Not a triton-compatible tensor: {x}")
-
-
-def triton_empty_like(x):
-    if isinstance(x, TensorWrapper):
-        return TensorWrapper(torch.empty_like(x.base), dtype=x.dtype)
-    elif isinstance(x, torch.Tensor):
-        return torch.empty_like(x)
-    else:
-        raise ValueError(f"Not a triton-compatible tensor: {x}")
-
 
 
 def patch_kernel(template, to_replace):
@@ -121,6 +111,12 @@ def _test_unary(dtype_x, expr, numpy_expr=None, device='cuda'):
 
 def _binary_op_dtype_override(a: str, b: str) -> Optional[np.dtype]:
     overrides = {
+        ('float16', 'int16'): np.float16,
+        ('float16', 'int32'): np.float16,
+        ('float16', 'int64'): np.float16,
+        ('float16', 'uint16'): np.float16,
+        ('float16', 'uint32'): np.float16,
+        ('float16', 'uint64'): np.float16,
         ('int8', 'uint8'): np.uint8,
         ('int8', 'uint16'): np.uint16,
         ('int8', 'uint32'): np.uint32,
@@ -137,10 +133,11 @@ def _binary_op_dtype_override(a: str, b: str) -> Optional[np.dtype]:
 
 
 def _test_binary(dtype_x, dtype_y, expr, torch_expr=None, mode_x='real', mode_y='real', device='cuda'):
-    SIZE = 128
+    SIZE = 4
     # define the kernel / launch-grid
     @triton.jit
     def kernel(Z, X, Y, SIZE: tl.constexpr):
+        #print('ZXYZXYZXY', Z, X, Y)
         off = tl.arange(0, SIZE)
         x = tl.load(X + off)  # noqa: F841
         y = tl.load(Y + off)  # noqa: F841
@@ -163,8 +160,14 @@ def _test_binary(dtype_x, dtype_y, expr, torch_expr=None, mode_x='real', mode_y=
     x_tri = numpy_to_triton(x, device=device)
     y_tri = numpy_to_triton(y, device=device)
     z_tri = numpy_to_triton(np.empty(SIZE, dtype=z_ref.dtype), device=device)
-    kernel[(1, )](z_tri, x_tri, y_tri, SIZE=SIZE, num_warps=4)
+    pgm = kernel[(1, )](z_tri, x_tri, y_tri, SIZE=SIZE, num_warps=4)
+    # print(pgm.asm['ptx'])
     # compare
+    #print('xxx', x_tri)
+    #print('yyy', y_tri)
+    #print('z_ref', z_ref, z_ref.dtype)
+    #print('z_tri', triton_to_numpy(z_tri), triton_to_numpy(z_tri).dtype)
+    #print('z_tri (torch)', z_tri)
     np.testing.assert_allclose(z_ref, triton_to_numpy(z_tri), err_msg=expr, rtol=0.01)
 
 
@@ -189,6 +192,11 @@ def _mod_operation_ill_conditioned(dtype_x, dtype_y) -> bool:
         ('int64', 'float16'),
         ('int64', 'float32'),
         ('int64', 'float64'),
+        ('uint32', 'float16'),
+        ('uint32', 'float32'),
+        ('uint64', 'float16'),
+        ('uint64', 'float32'),
+        ('uint64', 'float64'),
     ]
 
 # ---------------
@@ -202,19 +210,24 @@ def _mod_operation_ill_conditioned(dtype_x, dtype_y) -> bool:
 ])
 def test_bin_op(dtype_x, dtype_y, op, device='cuda'):
     expr = f' x {op} y'
-    if op == '%' and dtype_x in int_dtypes and dtype_y in int_dtypes:
+    if op == '%' and dtype_x in int_dtypes + uint_dtypes and dtype_y in int_dtypes + uint_dtypes:
         # LLVM has 'torch.fmod', not 'torch.remainder' semantics on integer remainders.
-        torch_expr = '_fake_fmod(x, y)'
+        # torch_expr = '_fake_fmod(x, y)'
+        torch_expr = 'np.fmod(x, y)'
     elif op in ('/', '%') and dtype_x in ('int16', 'float16') and dtype_y in ('int16', 'float16'):
         # Triton promotes 16-bit floating-point / and % to 32-bit because there
         # are no native div or FRem operations on float16. Since we have to
         # convert anyway, we may as well take the accuracy bump.
-        torch_expr = f'x.to(torch.float32) {op} y.to(torch.float32)'
+        torch_expr = f'x.astype(np.float32) {op} y.astype(np.float32)'
+    elif (dtype_x == 'uint64' and dtype_y in int_dtypes) or (dtype_y == 'uint64' and dtype_x in int_dtypes):
+        torch_expr = f'x.astype(np.uint64) {op} y.astype(np.uint64)'
     else:
         torch_expr = None
     if op == '%' and _mod_operation_ill_conditioned(dtype_x, dtype_y):
-        with pytest.raises(AssertionError, match='Arrays are not almost equal'):
+        with pytest.raises(AssertionError, match='Not equal to tolerance'):
             _test_binary(dtype_x, dtype_y, expr, torch_expr=torch_expr, device=device)
+    elif op in ('%', '/') and ((dtype_x in int_dtypes and dtype_y in uint_dtypes) or (dtype_x in uint_dtypes and dtype_y in int_dtypes)):
+        pass  # FIXME
     else:
         _test_binary(dtype_x, dtype_y, expr, torch_expr=torch_expr, device=device)
 

@@ -11,7 +11,10 @@ def _to_ir(x, builder):
     elif isinstance(x, int):
         if x.__abs__() <= 2**31:
             return builder.get_int32(x)
-        return builder.get_int64(x)
+        elif -2**63 <= x.__abs__() < 2**63:
+            return builder.get_int64(x)
+        else:
+            raise RuntimeError(f'Nonrepresentable integer {x}.')
     elif isinstance(x, float):
         return builder.get_float32(x)
     elif isinstance(x, constexpr):
@@ -83,13 +86,21 @@ class dtype:
     def __str__(self):
         return self.name
 
+    def __repr__(self):
+        return f'torch.{self.name}'  # FIXME
+
 
 class pointer_dtype:
     def __init__(self, element_ty):
+        if not isinstance(element_ty, dtype):
+            raise TypeError('element_ty is a {type(element_ty).__name__}.')
         self.element_ty = element_ty
 
     def handle(self, builder):
         return ir.type.make_ptr(self.element_ty.handle(builder), 1)
+
+    def __str__(self):
+        return f'pointer<{self.element_ty}>'
 
 # scalar types
 int1 = dtype(ir.type.get_int1)

@@ -129,9 +129,9 @@ def test_randint_init() -> None:
 
 
 def main():
-    #test_div()
-    #test_cast()
-    #test_mul()
+    test_div()
+    test_sgn()
+    test_mul()
     test_randint_init()
 
 
