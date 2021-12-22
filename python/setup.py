@@ -121,7 +121,7 @@ class CMakeBuild(build_ext):
 
 setup(
     name="triton",
-    version="2.0.1",
+    version="2.0.2",
     author="Philippe Tillet",
     author_email="phil@openai.com",
     description="A language and compiler for custom Deep Learning operations",
