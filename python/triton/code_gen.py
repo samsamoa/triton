@@ -845,10 +845,7 @@ def version_key():
         with open(lib.module_finder.find_spec(lib.name).origin, "rb") as f:
             contents += [hashlib.md5(f.read()).hexdigest()]
     # ptxas version
-    try:
-        ptxas_version = hashlib.md5(subprocess.check_output(["ptxas", "--version"])).hexdigest()
-    except Exception:
-        ptxas_version = ''
+    ptxas_version = ''
     return '-'.join(triton.__version__) + '-' + ptxas_version + '-' + '-'.join(contents)
 
 #########################3

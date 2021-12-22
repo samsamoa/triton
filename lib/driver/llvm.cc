@@ -158,55 +158,7 @@ std::string llir_to_ptx(llvm::Module* module, int cc, int version){
 }
 
 std::string ptx_to_cubin(const std::string& ptx, int cc) {
-  std::string version;
-  // search pathes for ptxas
-  std::vector<std::string> ptxas_prefixes = {"", "/usr/local/cuda/bin/"};
-  std::string triton_ptxas = tools::getenv("TRITON_PTXAS_PATH");
-  if(!triton_ptxas.empty())
-    ptxas_prefixes.insert(ptxas_prefixes.begin(), triton_ptxas);
-  // see what path for ptxas are valid
-  std::vector<std::string> working_ptxas;
-  for(std::string prefix: ptxas_prefixes){
-    std::string ptxas = prefix + "ptxas";
-    bool works = tools::exec(ptxas + " --version 2>&1", version) == 0;
-    if(works)
-      working_ptxas.push_back(ptxas);
-  }
-  // error if no working ptxas was found
-  if(working_ptxas.empty())
-    throw std::runtime_error("`ptxas` was searched in TRITON_PTXAS_PATH, /usr/local/cuda/bin/ or PATH"
-                             " but a working version could not be found.");
-  std::string ptxas = working_ptxas.front();
-  // compile ptx with ptxas
-  char _fsrc[] = "/tmp/triton_k_XXXXXX";
-  char _flog[] = "/tmp/triton_l_XXXXXX";
-  mkstemp(_fsrc);
-  mkstemp(_flog);
-  std::string fsrc = _fsrc;
-  std::string flog = _flog;
-  std::string fbin = fsrc + ".o";
-  const char* _fbin = fbin.c_str();
-  std::ofstream ofs(fsrc);
-  ofs << ptx;
-  ofs.close();
-  std::string cmd;
-  int err;
-  cmd = ptxas + " -v --gpu-name=sm_" + std::to_string(cc) + " " + fsrc + " -o " + fsrc + ".o 2> " + flog;
-  err = system(cmd.c_str());
-  if(err != 0){
-    std::ifstream _log(_flog);
-    std::string log(std::istreambuf_iterator<char>(_log), {});
-    throw std::runtime_error("Internal Triton PTX codegen error: \n" + log);
-  }
-  CUmodule ret;
-  std::ifstream _cubin(_fbin, std::ios::binary );
-  std::string cubin(std::istreambuf_iterator<char>(_cubin), {});
-  _cubin.close();
-  dispatch::cuModuleLoadData(&ret, cubin.c_str());
-  unlink(_fsrc);
-  unlink(_flog);
-  unlink(_fbin);
-  return cubin;
+    return "";
 }
 
 //CUmodule ptx_to_cumodule(const std::string& ptx, int cc) {
